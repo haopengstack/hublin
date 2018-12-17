@@ -1,7 +1,6 @@
 'use strict';
 
-
-angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meetings.session', 'restangular'])
+angular.module('meetings.conference')
   .factory('conferenceService', ['conferenceAPI', 'session', function(conferenceAPI, session) {
     function create(conferenceName, displayName) {
       return conferenceAPI.create(conferenceName, displayName);
@@ -10,6 +9,7 @@ angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meeting
     function enter(conferenceName, displayName) {
       return conferenceAPI.get(conferenceName, displayName).then(function(response) {
         session.setConference(response.data);
+
         return response;
       });
     }
@@ -32,8 +32,10 @@ angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meeting
   .factory('conferenceAPI', ['$q', '$window', 'Restangular', function($q, $window, Restangular) {
     function get(id, displayName) {
       var href = $window.location.origin + '/' + encodeURIComponent(id);
-      return Restangular.one('conferences', id).get({displayName: displayName}).then(function(response) {
+
+      return Restangular.one('conferences', id).get({ displayName: displayName }).then(function(response) {
         response.data.href = href;
+
         return response;
       });
     }
@@ -43,15 +45,15 @@ angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meeting
     }
 
     function updateMemberField(id, memberId, field, value) {
-      return Restangular.one('conferences', id).one('members', memberId).one(field).customPUT({value: value});
+      return Restangular.one('conferences', id).one('members', memberId).one(field).customPUT({ value: value });
     }
 
     function create(id, displayName) {
-      return Restangular.one('conferences', id).put({displayName: displayName});
+      return Restangular.one('conferences', id).put({ displayName: displayName });
     }
 
     function getOrCreate(id, displayName) {
-      return Restangular.one('conferences', id).get({displayName: displayName});
+      return Restangular.one('conferences', id).get({ displayName: displayName });
     }
 
     function addMembers(id, members) {
@@ -67,7 +69,7 @@ angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meeting
     }
 
     function redirectTo(id, tokenUuid) {
-      return Restangular.one('conferences').get({token: tokenUuid});
+      return Restangular.one('conferences').get({ token: tokenUuid });
     }
 
     return {
@@ -121,59 +123,60 @@ angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meeting
   }])
   .directive('conferenceCreateForm', ['$window', '$log', 'conferenceService', 'URI', 'conferenceNameGenerator',
     function($window, $log, conferenceService, URI, conferenceNameGenerator) {
-    return {
-      restrict: 'E',
-      templateUrl: '/views/modules/conference/conference-create-form.html',
-      link: function(scope) {
-        function buildUrl(room) {
-          return URI('/')
-          .query('')
-          .fragment('')
-          .segmentCoded(room);
+      return {
+        restrict: 'E',
+        templateUrl: '/views/modules/conference/conference-create-form.html',
+        link: function(scope) {
+          function buildUrl(room) {
+            return URI('/')
+              .query('')
+              .fragment('')
+              .segmentCoded(room);
+          }
+
+          scope.room = conferenceNameGenerator.getName();
+
+          scope.escapeRoomName = function(room) {
+            var result = room.replace(/\s+/g, '');
+
+            //removes all url associated characters : , / ? : @ & = + $ #
+            //and characters needing encoding : < > [ ] { } " % ; \ ^ | ~ ' `
+            result = result.replace(/[,\/\?:@&=\+\$#<>\[\]\{\}“"%;\\^|~'‘`]+/g, '');
+
+            var blackList = [
+              'api',
+              'components',
+              'views',
+              'js',
+              'css',
+              'images',
+              'favicon.ico',
+              'robots.txt',
+              'apple-touch-icon.png',
+              'apple-touch-icon-precomposed.png'
+            ];
+
+            if (blackList.indexOf(result) >= 0) { result = ''; }
+
+            return result;
+          };
+
+          scope.go = function() {
+            var escapedName = scope.escapeRoomName(scope.room);
+
+            if (escapedName === '') {
+              $window.location.href = buildUrl(conferenceNameGenerator.getName());
+            } else {
+              $window.location.href = buildUrl(escapedName);
+            }
+          };
+
+          scope.selectMe = function($event) {
+            $event.target.select();
+          };
         }
-
-        scope.room = conferenceNameGenerator.getName();
-
-        scope.escapeRoomName = function(room) {
-          var result = room.replace(/\s+/g, '');
-
-          //removes all url associated characters : , / ? : @ & = + $ #
-          //and characters needing encoding : < > [ ] { } " % ; \ ^ | ~ ' `
-          result = result.replace(/[,\/\?:@&=\+\$#<>\[\]\{\}“"%;\\^|~'‘`]+/g, '');
-
-          var blackList = [
-            'api',
-            'components',
-            'views',
-            'js',
-            'css',
-            'images',
-            'favicon.ico',
-            'robots.txt',
-            'apple-touch-icon.png',
-            'apple-touch-icon-precomposed.png'
-          ];
-          if (blackList.indexOf(result) >= 0) { result = ''; }
-
-          return result;
-        };
-
-        scope.go = function() {
-          var escapedName = scope.escapeRoomName(scope.room);
-          if (escapedName === '') {
-            $window.location.href = buildUrl(conferenceNameGenerator.getName());
-          }
-          else {
-            $window.location.href = buildUrl(escapedName);
-          }
-        };
-
-        scope.selectMe = function($event) {
-          $event.target.select();
-        };
-      }
-    };
-  }])
+      };
+    }])
   .controller('goodbyeController', ['$scope', '$window', 'session', function($scope, $window, session) {
     $scope.reopen = function() {
       $window.location.href = '/' + session.conference._id + '?displayName=' + session.user.displayName;
@@ -189,26 +192,32 @@ angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meeting
       templateUrl: '/views/modules/live-conference/browser-authorization-dialog.html',
       replace: true,
       link: function(scope, element) {
+        element.modal('show');
+        scope.isMediaReady = true;
         webRTCService.setGotMedia(function(gotMediaCB, errorText) {
           element.modal('hide');
+          if (errorText) {
+            $rootScope.$broadcast('localMediaError', errorText);
+            scope.isMediaReady = false;
+            element.modal('show');
+
+            return;
+          }
           $rootScope.$broadcast('localMediaReady');
         });
-
-        function interceptStream(callback) {
-          return function(mediaStream) {
-            $rootScope.$emit('localMediaStream', mediaStream);
-            callback(mediaStream);
-          };
-        }
-
-        var oldGetUserMedia = $window.getUserMedia;
-        $window.getUserMedia = function getUserMedia(constraints, successCallback, errorCallback) {
+      }
+    };
+  }]).directive('browserErrorDialog', ['$window', '$rootScope', '$log', '$timeout', function($window, $rootScope, $log, $timeout) {
+    return {
+      restrict: 'E',
+      templateUrl: '/views/modules/live-conference/browser-error-dialog.html',
+      replace: true,
+      link: function(scope, element) {
+        scope.$on('localMediaError', function(event, errorText) {
+          $log.error(errorText);
+          $timeout(function() { scope.errorMessage = errorText; });
           element.modal('show');
-          oldGetUserMedia(constraints, interceptStream(successCallback), function() {
-            // try fallback constraints
-            oldGetUserMedia({ audio: true, video: true }, interceptStream(successCallback), errorCallback);
-          });
-        };
+        });
       }
     };
   }])
@@ -244,6 +253,7 @@ angular.module('meetings.conference', ['meetings.user', 'meetings.uri', 'meeting
         var adverb = nameGenerator.adverbs[Math.floor(Math.random() * nameGenerator.adverbs.length)];
         var adjective = nameGenerator.adjectives[Math.floor(Math.random() * nameGenerator.adjectives.length)];
         var noun = nameGenerator.nouns[Math.floor(Math.random() * nameGenerator.nouns.length)];
+
         return adverb + '-' + adjective + '-' + noun;
       }
     };

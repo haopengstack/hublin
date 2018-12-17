@@ -1,5 +1,5 @@
-@import "../components/angular-liveconference/src/css/conference.less";
 @import "./variables.less";
+@import "./conference.less";
 
 @yellow: #eecb25;
 @light-grey: #f8f8f8;
@@ -61,6 +61,21 @@ html.websockets.getusermedia.peerconnection.datachannel {
     .bottom {
       position: absolute;
       bottom: 0;
+    }
+  }
+}
+
+.hublin-browser-error-dialog {
+  .modal-content {
+    background: white;
+    padding: 0;
+    .modal-header {
+      border-bottom: 10px;
+      padding-bottom: 0;
+    }
+    .modal-body {
+      padding-top: 5px;
+      padding-bottom: 5px;
     }
   }
 }

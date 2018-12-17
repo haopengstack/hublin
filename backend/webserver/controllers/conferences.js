@@ -2,47 +2,12 @@
 
 var conference = require('../../core/conference');
 var AUTHORIZED_FIELDS = ['displayName'];
-var extend = require('extend');
-
 var Report = require('../../core/report');
 
-function _sanitizeAndValidateMember(member) {
-  if (!member.objectType || !member.id) {
-    return false;
-  }
-  var sanitizedMember = {
-    objectType: member.objectType,
-    id: member.id,
-    displayName: member.displayName ? member.displayName : member.id
-  };
-  return sanitizedMember;
-}
-
-function _transformConferenceMember(member) {
-  var sanitizedMember = {
-    objectType: member.objectType,
-    _id: member._id,
-    displayName: member.displayName,
-    status: member.status
-  };
-  return sanitizedMember;
-}
-
-function _transformConferenceMembers(members) {
-  return members.map(_transformConferenceMember);
-}
-
-function _transformConference(conference) {
-  var sanitizedConference = extend(true, {}, conference);
-  delete sanitizedConference.history;
-  if (conference.members) {
-    sanitizedConference.members = _transformConferenceMembers(sanitizedConference.members);
-  }
-  return sanitizedConference;
-}
 module.exports = function(dependencies) {
   var logger = dependencies('logger');
   var errors = require('../errors')(dependencies);
+  const denormalizer = require('../denormalizers/conference')(dependencies);
 
   function inviteMembers(conf, user, members, baseUrl, callback) {
     var newMembers = [];
@@ -52,7 +17,7 @@ module.exports = function(dependencies) {
     }
 
     members.forEach(function(member) {
-      var sanitizedMember = _sanitizeAndValidateMember(member);
+      var sanitizedMember = denormalizer.sanitizeAndValidateMember(member);
       if (sanitizedMember) {
         newMembers.push(sanitizedMember);
       }
@@ -70,21 +35,33 @@ module.exports = function(dependencies) {
       if (err) {
         throw new errors.ServerError(err);
       }
-      res.send(202);
+      res.status(202).end();
     });
   }
 
   function finalizeCreation(req, res) {
+    const conference = req.conference ? req.conference.toObject() : {};
 
     if (!req.body.members || req.body.members.length === 0) {
-      return res.json(req.created ? 201 : 200, _transformConference(req.conference.toObject()));
+      return denormalizer.denormalize(conference)
+        .then(denormalized => res.status(req.created ? 201 : 200).json(denormalized))
+        .catch(err => {
+          logger.error(err);
+          res.status(500).send('Failed to denormalize conference');
+        });
     }
 
     inviteMembers(req.conference, req.user, req.body.members, req.openpaas.getBaseURL(), function(err) {
       if (err) {
         throw new errors.ServerError(err);
       }
-      res.send(202, _transformConference(req.conference.toObject()));
+
+      denormalizer.denormalize(req.conference.toObject())
+        .then(conference => res.status(202).json(conference))
+        .catch(err => {
+          logger.error(err);
+          res.status(500).send('Failed to denormalize conference');
+        });
     });
   }
 
@@ -93,8 +70,8 @@ module.exports = function(dependencies) {
     if (!conf) {
       throw new errors.BadRequestError('Conference is missing');
     }
-    var sanitizedMembers = conf.members ? _transformConferenceMembers(conf.toObject().members) : [];
-    res.json(200, sanitizedMembers);
+    var sanitizedMembers = conf.members ? denormalizer.sanitizeMembers(conf.toObject().members) : [];
+    res.status(200).json(sanitizedMembers);
   }
 
   function updateMemberField(req, res) {
@@ -129,7 +106,7 @@ module.exports = function(dependencies) {
       var user = req.user;
       user[field] = data.value;
       req.user = user;
-      res.json(200, _transformConferenceMember(returnedMember));
+      res.status(200).json(denormalizer.sanitizeMember(returnedMember));
     });
   }
 
@@ -137,7 +114,13 @@ module.exports = function(dependencies) {
     if (!req.conference) {
       throw new errors.NotFoundError('No such conference');
     }
-    res.json(200, _transformConference(req.conference.toObject()));
+
+    denormalizer.denormalize(req.conference.toObject())
+      .then(denormalized => res.status(200).json(denormalized))
+      .catch(err => {
+        logger.error(err);
+        res.status(500).send('Failed to denormalize conference');
+      });
   }
 
   function persistReport(req, callback) {
@@ -181,7 +164,7 @@ module.exports = function(dependencies) {
         throw new errors.ServerError(err);
       }
 
-      res.json(201, {id: created._id});
+      res.status(201).json({ id: created._id });
     });
   }
 

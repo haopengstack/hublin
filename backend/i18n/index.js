@@ -1,20 +1,18 @@
 'use strict';
 
-var i18n = require('i18n');
-var jade = require('jade');
-i18n.configure(
-  {
-    defaultLocale: 'en',
-    locales: ['de', 'en', 'fr', 'vi', 'zh'],
-    directory: __dirname + '/locales',
-    updateFiles: false,
-    indent: '  ',
-    extension: '.json',
-    cookie: 'locale'
-  }
-);
+const i18n = require('../core/i18n');
+const pug = require('pug');
 
-var mashpieInit = i18n.init;
+const i18nConfig = {
+  multiDirectories: true,
+  directory: __dirname + '/locales',
+  locales: ['de', 'en', 'fr', 'vi', 'zh']
+};
+
+i18n.setDefaultConfiguration(i18nConfig);
+
+const mashpieInit = i18n.init;
+
 i18n.init = function(req, res, next) {
 
   /**
@@ -23,8 +21,8 @@ i18n.init = function(req, res, next) {
    * @see i18n.__
    */
   res.locals.__j = function(/* phrase, ...args */) {
-    var args = Array.prototype.map.call(arguments, function(v, i) {
-      return (i > 0 ? jade.compile(v)({}) : v);
+    const args = Array.prototype.map.call(arguments, function(v, i) {
+      return (i > 0 ? pug.compile(v)({}) : v);
     });
     return res.locals.__.apply(res.locals, args);
   };

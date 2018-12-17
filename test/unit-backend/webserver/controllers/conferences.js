@@ -4,6 +4,7 @@ var expect = require('chai').expect;
 var mockery = require('mockery');
 var logger = require('../../../fixtures/logger-noop');
 var extend = require('extend');
+const sinon = require('sinon');
 
 describe('The conferences controller', function() {
   var dependencies, errors;
@@ -29,46 +30,100 @@ describe('The conferences controller', function() {
   describe('finalizeCreation function', function() {
 
     it('should send back 201 with conference when created', function(done) {
+      const configSpy = sinon.spy(() => ({
+        get: function(callback) {
+          callback();
+        }
+      }));
+
       mockery.registerMock('../../core/conference', {});
+      mockery.registerMock('../../core/esn-config', configSpy);
       this.helpers.mock.models({});
       var conference = {_id: 'MyConference', members: []};
       var controller = this.helpers.requireBackend('webserver/controllers/conferences')(dependencies);
-      var res = {
-        json: function(status, body) {
+      var res = this.helpers.express.jsonResponse(
+        function(status, body) {
           expect(status).to.equal(201, body);
           expect(body).to.deep.equal(conference.toObject());
+          expect(configSpy).to.have.been.calledWith('iceservers');
           done();
         }
-      };
+      );
       controller.finalizeCreation({
         created: true,
         user: {displayName: 'foobar'},
         conference: this.addToObject(conference),
         body: {}
-      },res);
+      }, res);
     });
 
-    it('should send back 200 with conference when already created', function(done) {
+    it('should add ice configuration 201 with conference when created', function(done) {
+      const iceConfiguration = ['foo', 'bar'];
+      const configSpy = sinon.spy(() => ({
+        get: function(callback) {
+          callback(null, { servers: iceConfiguration });
+        }
+      }));
+
       mockery.registerMock('../../core/conference', {});
+      mockery.registerMock('../../core/esn-config', configSpy);
       this.helpers.mock.models({});
       var conference = {_id: 'MyConference', members: []};
       var controller = this.helpers.requireBackend('webserver/controllers/conferences')(dependencies);
-      var res = {
-        json: function(status, body) {
+      var res = this.helpers.express.jsonResponse(
+        function(status, body) {
+          expect(status).to.equal(201, body);
+          expect(body.iceServers).to.deep.equal(iceConfiguration);
+          expect(configSpy).to.have.been.calledWith('iceservers');
+          done();
+        }
+      );
+      controller.finalizeCreation({
+        created: true,
+        user: {displayName: 'foobar'},
+        conference: this.addToObject(conference),
+        body: {}
+      }, res);
+    });
+
+    it('should send back 200 with conference when already created', function(done) {
+      const configSpy = sinon.spy(() => ({
+        get: function(callback) {
+          callback();
+        }
+      }));
+
+      mockery.registerMock('../../core/conference', {});
+      mockery.registerMock('../../core/esn-config', configSpy);
+
+      this.helpers.mock.models({});
+      var conference = {_id: 'MyConference', members: []};
+      var controller = this.helpers.requireBackend('webserver/controllers/conferences')(dependencies);
+      var res = this.helpers.express.jsonResponse(
+        function(status, body) {
           expect(status).to.equal(200, body);
           expect(body).to.deep.equal(conference.toObject());
           done();
         }
-      };
+      );
       controller.finalizeCreation({
         created: false,
         user: {displayName: 'foobar'},
         conference: this.addToObject(conference),
         body: {}
-      },res);
+      }, res);
     });
 
     it('should send back 202 when members are invited', function(done) {
+      const configSpy = sinon.spy(() => ({
+        get: function(callback) {
+          callback();
+        }
+      }));
+
+      mockery.registerMock('../../core/conference', {});
+      mockery.registerMock('../../core/esn-config', configSpy);
+
       var membersToInvite = [{id: 'yo@hubl.in', objectType: 'email', displayName: 'yo@hubl.in'}];
       mockery.registerMock('../../core/conference', {
         invite: function(conference, user, members, baseUrl, callback) {
@@ -79,12 +134,12 @@ describe('The conferences controller', function() {
       this.helpers.mock.models({});
       var conference = {_id: 'MyConference', members: []};
       var controller = this.helpers.requireBackend('webserver/controllers/conferences')(dependencies);
-      var res = {
-        send: function(status) {
+      var res = this.helpers.express.response(
+        function(status) {
           expect(status).to.equal(202);
           done();
         }
-      };
+      );
       controller.finalizeCreation({
         created: true,
         user: {displayName: 'foobar'},
@@ -99,13 +154,21 @@ describe('The conferences controller', function() {
     });
 
     it('should send back 400 when members can not be invited due to bad request', function(done) {
+      const configSpy = sinon.spy(() => ({
+        get: function(callback) {
+          callback();
+        }
+      }));
+
       mockery.registerMock('../../core/conference', {
         invite: function(conference, user, members, callback) {
           return callback(new Error());
         }
       });
+      mockery.registerMock('../../core/esn-config', configSpy);
+
       this.helpers.mock.models({});
-      var conference = {_id: 'MyConference', members: []};
+      var conference = this.addToObject({_id: 'MyConference', members: []});
       var controller = this.helpers.requireBackend('webserver/controllers/conferences')(dependencies);
 
       this.helpers.expectHttpError(errors.BadRequestError, function(res) {
@@ -124,6 +187,13 @@ describe('The conferences controller', function() {
     });
 
     it('should send back 500 when members can not be invited due to server error', function(done) {
+      const configSpy = sinon.spy(() => ({
+        get: function(callback) {
+          callback();
+        }
+      }));
+
+      mockery.registerMock('../../core/esn-config', configSpy);
       mockery.registerMock('../../core/conference', {
         invite: function(conference, user, members, baseUrl, callback) {
           return callback(new Error());
@@ -161,10 +231,13 @@ describe('The conferences controller', function() {
       mockery.registerMock('../../core/conference', {});
       mockery.registerMock('../../core/report', {});
       var controller = this.helpers.requireBackend('webserver/controllers/conferences')(dependencies);
-      var res = this.helpers.httpStatusCodeValidatingJsonResponse(200, function(data) {
-        expect(data).to.deep.equal([]);
-        done();
-      });
+      var res = this.helpers.express.jsonResponse(
+        function(status, data) {
+          expect(status).to.equal(200);
+          expect(data).to.deep.equal([]);
+          done();
+        }
+      );
       var req = {
         conference: {}
       };
@@ -175,10 +248,13 @@ describe('The conferences controller', function() {
       mockery.registerMock('../../core/conference', {});
       mockery.registerMock('../../core/report', {});
       var controller = this.helpers.requireBackend('webserver/controllers/conferences')(dependencies);
-      var res = this.helpers.httpStatusCodeValidatingJsonResponse(200, function(data) {
-        expect(data).to.deep.equal([]);
-        done();
-      });
+      var res = this.helpers.express.jsonResponse(
+        function(status, data) {
+          expect(status).to.equal(200);
+          expect(data).to.deep.equal([]);
+          done();
+        }
+      );
       var req = {
         conference: {
           attendees: []
@@ -200,10 +276,13 @@ describe('The conferences controller', function() {
         {objectType: 'ot1', _id: 'id1', status: 'offline', displayName: 'display1'},
         {objectType: 'ot2', _id: 'id2', status: 'offline2', displayName: 'display2'}
       ];
-      var res = this.helpers.httpStatusCodeValidatingJsonResponse(200, function(users) {
-        expect(users).to.deep.equal(sanitizedMembers);
-        done();
-      });
+      var res = this.helpers.express.jsonResponse(
+        function(status, users) {
+          expect(status).to.equal(200);
+          expect(users).to.deep.equal(sanitizedMembers);
+          done();
+        }
+      );
       var req = {
         conference: this.addToObject({
           members: members
@@ -250,12 +329,12 @@ describe('The conferences controller', function() {
         user: members[0]
       };
 
-      var res = {
-        json: function() {
+      var res = this.helpers.express.jsonResponse(
+        function() {
           expect(req.user[field]).to.equal(name);
           done();
         }
-      };
+      );
       controller.updateMemberField(req, res);
     });
   });

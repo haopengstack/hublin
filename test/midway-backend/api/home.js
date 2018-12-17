@@ -20,10 +20,20 @@ describe('The home API', function() {
   };
 
   beforeEach(function(done) {
-    this.testEnv.initCore(function() {
-      var router = apiHelpers.getRouter('home', dependencies);
-      application = apiHelpers.getApplication(router, dependencies);
-      done();
+    var self = this;
+
+    this.mongoose = require('mongoose');
+    this.testEnv.initRedisConfiguration(this.mongoose, function(err) {
+      if (err) {
+        return done(err);
+      }
+
+      self.testEnv.initCore(function() {
+        var router = apiHelpers.getRouter('home', dependencies);
+
+        application = apiHelpers.getApplication(router, dependencies);
+        done();
+      });
     });
   });
 
@@ -212,12 +222,13 @@ describe('The home API', function() {
               'history': [],
               'members': [
                 {
-                  'connection': { 'ipAddress': '127.0.0.1' },
+                  'connection': { 'ipAddress': '::ffff:127.0.0.1' },
                   'displayName': 'anonymous',
                   'objectType': 'hublin:anonymous',
                   'status': 'offline'
                 }
               ],
+              'roomId': 0,
               'schemaVersion': 1,
               'timestamps': {}
             });
@@ -263,12 +274,13 @@ describe('The home API', function() {
               'history': [],
               'members': [
                 {
-                  'connection': { 'ipAddress': '127.0.0.1' },
+                  'connection': { 'ipAddress': '::ffff:127.0.0.1' },
                   'displayName': 'aGuy',
                   'objectType': 'hublin:anonymous',
                   'status': 'offline'
                 }
               ],
+              'roomId': 0,
               'schemaVersion': 1,
               'timestamps': {}
             });
@@ -329,12 +341,13 @@ describe('The home API', function() {
                     'status': 'offline'
                   },
                   {
-                    'connection': { 'ipAddress': '127.0.0.1' },
+                    'connection': { 'ipAddress': '::ffff:127.0.0.1' },
                     'displayName': 'aGuy',
                     'status': 'offline',
                     'objectType': 'hublin:anonymous'
                   }
                 ],
+                'roomId': 0,
                 'schemaVersion': 1,
                 'timestamps': {}
               });

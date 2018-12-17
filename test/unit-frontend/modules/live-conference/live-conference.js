@@ -1,13 +1,14 @@
 'use strict';
 
-/* global chai: false */
+/* global chai: false, sinon: false */
+
 var expect = chai.expect;
 
 describe('The op.live-conference module', function() {
 
   beforeEach(function() {
     module('op.live-conference');
-    module('meetings.jade.templates');
+    module('meetings.pug.templates');
   });
 
   describe('The liveConferenceAutoReconnect directive', function() {
@@ -18,8 +19,8 @@ describe('The op.live-conference module', function() {
         _disconnectCallbacks: [],
 
         connect: function(conf, cb) { cb(null); },
-        leaveRoom: function(conf) {},
-        performCall: function(id) {},
+        leaveRoom: function() { },
+        performCall: function() { },
         addDisconnectCallback: function(cb) { this._disconnectCallbacks.push(cb); }
       };
 
@@ -31,11 +32,11 @@ describe('The op.live-conference module', function() {
 
     beforeEach(inject(function($rootScope, $window, _$timeout_, $compile) {
       $window.easyrtc = {
-        enableDataChannels: function() {},
-        setDisconnectListener: function() {},
-        setDataChannelCloseListener: function() {},
-        setCallCancelled: function() {},
-        setOnStreamClosed: function() {}
+        enableDataChannels: function() { },
+        setDisconnectListener: function() { },
+        setDataChannelCloseListener: function() { },
+        setCallCancelled: function() { },
+        setOnStreamClosed: function() { }
       };
       this.scope = $rootScope.$new();
       $timeout = _$timeout_;
@@ -54,17 +55,18 @@ describe('The op.live-conference module', function() {
       } catch (e) {
         return done();
       }
+
       return done(new Error('I should have thrown'));
     });
 
     it('should attempt to reconnect after being disconnected', function() {
+      var connected = 0;
+      var cberror = new Error('still putting on makeup');
+
       this.webRTCService.connect = function(conf, callback) {
         connected++;
         callback(cberror);
       };
-
-      var connected = 0;
-      var cberror = new Error('still putting on makeup');
 
       expect(this.webRTCService._disconnectCallbacks.length).to.equal(1);
       var disconnectCallback = this.webRTCService._disconnectCallbacks[0];
@@ -93,22 +95,20 @@ describe('The op.live-conference module', function() {
   });
 
   describe('The disconnect-dialog directive', function() {
-
-    var $window;
     var element, scope;
 
-    beforeEach(inject(function($compile, $rootScope, _$window_) {
-      $window = _$window_;
+    beforeEach(inject(function($compile, $rootScope) {
       scope = $rootScope.$new();
       element = $compile('<disconnect-dialog />')(scope);
 
       $rootScope.$digest();
     }));
 
-    it('should reload the page when the button is clicked', function(done) {
-      $window.location.reload = done;
-
+    it('should reload the page when the button is clicked', function() {
+      scope.reloadPage = sinon.spy();
       element.find('button').click();
+
+      expect(scope.reloadPage).to.has.been.calledWith();
     });
 
   });
@@ -129,43 +129,43 @@ describe('The op.live-conference module', function() {
     });
 
     it('The on function should register a new callback, when it is the first callback', function() {
-      var callback = function() {};
+      var callback = function() { };
 
       eventCallbackService.on('test', callback);
       expect(eventCallbackRegistry).to.deep.equal({
-        'test': [callback]
+        test: [callback]
       });
     });
 
     it('The on function should register a new callback, when it is not the first callback', function() {
-      var existingCallback = function() {};
-      var callback = function() {};
+      var existingCallback = function() { };
+      var callback = function() { };
 
       eventCallbackRegistry.test = [existingCallback];
       eventCallbackService.on('test', callback);
       expect(eventCallbackRegistry).to.deep.equal({
-        'test': [existingCallback, callback]
+        test: [existingCallback, callback]
       });
     });
 
     it('The off function should unregister a callback, when it is not the only callback', function() {
-      var existingCallback = function() {};
-      var callback = function() {};
+      var existingCallback = function() { };
+      var callback = function() { };
 
       eventCallbackRegistry.test = [existingCallback, callback];
       eventCallbackService.off('test', callback);
       expect(eventCallbackRegistry).to.deep.equal({
-        'test': [existingCallback]
+        test: [existingCallback]
       });
     });
 
     it('The off function should unregister a callback, when it is the only callback', function() {
-      var callback = function() {};
+      var callback = function() { };
 
       eventCallbackRegistry.test = [callback];
       eventCallbackService.off('test', callback);
       expect(eventCallbackRegistry).to.deep.equal({
-        'test': []
+        test: []
       });
     });
 
@@ -173,11 +173,11 @@ describe('The op.live-conference module', function() {
 
   describe('The conferenceController controller', function() {
 
-    var $controller, deviceDetector = {}, eventCallbackRegistry, readyThen, initThen, goodbyeThen, stateValue;
+    var $q, $rootScope, $stateParams, session, $controller, deviceDetector = {}, eventCallbackRegistry, readyThen, initThen, stateValue, configurationService;
 
     beforeEach(function() {
       angular.mock.module(function($provide) {
-        $provide.value('session', {
+        $provide.value('session', session = {
           ready: {
             then: function(callback) { readyThen = callback; }
           },
@@ -185,8 +185,11 @@ describe('The op.live-conference module', function() {
             then: function(callback) { initThen = callback; }
           },
           goodbye: {
-            then: function(callback) { goodbyeThen = callback; }
-          }
+            then: function() { }
+          },
+          user: {},
+          conference: {},
+          setConfigured: sinon.spy()
         });
         $provide.value('conference', {});
         $provide.value('$state', {
@@ -195,11 +198,19 @@ describe('The op.live-conference module', function() {
           }
         });
         $provide.value('deviceDetector', deviceDetector);
-        $provide.constant('EVENTS', { beforeunload: 'testbeforeunload'});
+        $provide.constant('EVENTS', { beforeunload: 'testbeforeunload' });
+        $provide.value('configurationService', configurationService = {
+          configure: sinon.spy(function() {
+            return $q.when();
+          })
+        });
+        $provide.constant('$stateParams', $stateParams = {});
       });
     });
 
-    beforeEach(inject(function(_$controller_, _eventCallbackRegistry_) {
+    beforeEach(inject(function(_$rootScope_, _$q_, _$controller_, _eventCallbackRegistry_) {
+      $rootScope = _$rootScope_;
+      $q = _$q_;
       $controller = _$controller_;
       eventCallbackRegistry = _eventCallbackRegistry_;
     }));
@@ -246,16 +257,42 @@ describe('The op.live-conference module', function() {
       angular.element(window).trigger('testbeforeunload');
     });
 
+    it('should not directly go to conference step when autostart=true if there is no displayName', function() {
+      var $scope = {};
+
+      $stateParams.autostart = true;
+
+      $controller('conferenceController', {
+        $scope: $scope
+      });
+
+      expect($scope.process.step).to.equal('configuration');
+    });
+
+    it('should directly go to conference step when autostart=true and there is a displayName', function() {
+      var $scope = {};
+
+      $stateParams.autostart = true;
+      $stateParams.displayName = 'myName';
+
+      $controller('conferenceController', {
+        $scope: $scope
+      });
+      $rootScope.$digest();
+
+      expect($scope.process.step).to.equal('conference');
+      expect(configurationService.configure).to.have.been.calledWith({ displayName: 'myName' });
+      expect(session.setConfigured).to.have.been.calledWith(true);
+    });
+
   });
 
   describe('The landingPageReminder directive', function() {
     var element, scope, remindersGenerator, reminders;
-    var eventCallbackService, eventCallbackRegistry;
+    var eventCallbackService;
 
-
-    beforeEach(inject(function(_eventCallbackService_, _eventCallbackRegistry_) {
+    beforeEach(inject(function(_eventCallbackService_) {
       eventCallbackService = _eventCallbackService_;
-      eventCallbackRegistry = _eventCallbackRegistry_;
     }));
 
     beforeEach(function() {
@@ -267,11 +304,11 @@ describe('The op.live-conference module', function() {
           buttons: [
             {
               text: 'Button 1',
-              callback: chai.spy()
+              callback: sinon.spy()
             },
             {
               text: 'Button 2',
-              callback: chai.spy()
+              callback: sinon.spy()
             }
           ]
         };
@@ -301,7 +338,7 @@ describe('The op.live-conference module', function() {
 
       reminders.forEach(function(reminder) {
         reminder.buttons.forEach(function(button) {
-          expect(button.callback).to.have.been.called.once;
+          expect(button.callback).to.have.been.calledOnce;
         });
       });
     });

@@ -9,11 +9,13 @@ angular.module('meetingsApplication', [
   'meetings.session',
   'meetings.user',
   'meetings.conference',
+  'meetings.conference.constants',
   'meetings.language',
-  'mgcrea.ngStrap'
+  'mgcrea.ngStrap',
+  'pascalprecht.translate'
 ]).config(function($routeProvider, RestangularProvider) {
 
-  $routeProvider.otherwise({redirectTo: '/'});
+  $routeProvider.otherwise({ redirectTo: '/' });
   RestangularProvider.setBaseUrl('/');
   RestangularProvider.setFullResponse(true);
 
